@@ -28,6 +28,7 @@ mod builder;
 mod documentation;
 mod error;
 mod generated;
+mod handlers;
 pub mod languages;
 mod vendored;
 
