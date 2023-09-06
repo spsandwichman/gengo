@@ -1,14 +1,15 @@
-use gix::ThreadSafeRepository;
+use super::{Analyzer, Response, ResponseEntry};
+use crate::{Category, Language};
 use crate::{Error, ErrorKind, Result};
-use gix::discover::Error as DiscoverError;
-use gix::bstr::{BString, ByteSlice};
-use std::error::Error as ErrorTrait;
-use std::collections::HashMap;
-use std::path::Path;
-use crate::Language;
-use std::sync::atomic::Ordering;
 use gix::attrs::StateRef;
-use super::Analyzer;
+use gix::bstr::{BString, ByteSlice};
+use gix::discover::Error as DiscoverError;
+use gix::prelude::FindExt;
+use gix::ThreadSafeRepository;
+use std::collections::HashMap;
+use std::error::Error as ErrorTrait;
+use std::path::Path;
+use std::sync::atomic::Ordering;
 
 pub struct Handler {
     repository: ThreadSafeRepository,
@@ -31,9 +32,13 @@ impl Handler {
         Ok(handler)
     }
 
-    fn analyze<A: Analyzer<P>, P: AsRef<Path>>(&self, analyzer: A) -> crate::Result<()> {
+    fn analyze<A: Analyzer<P>, P: AsRef<Path>>(&self, analyzer: A) -> crate::Result<Response> {
         let local_repo = self.repository.to_thread_local();
-        let tree_id = local_repo.rev_parse_single(self.rev.as_str())?.object()?.peel_to_tree()?.id;
+        let tree_id = local_repo
+            .rev_parse_single(self.rev.as_str())?
+            .object()?
+            .peel_to_tree()?
+            .id;
         let mut stack = vec![(BString::default(), local_repo, tree_id)];
 
         let mut all_results = Vec::new();
@@ -50,7 +55,13 @@ impl Handler {
                 })
                 .collect::<HashMap<_, _>>()
             });
-            self.analyze_index(analyzer, &repo.into_sync(), &mut results, state, is_submodule)?;
+            self.analyze_index(
+                analyzer,
+                &repo.into_sync(),
+                &mut results,
+                state,
+                is_submodule,
+            )?;
             all_results.push(results);
 
             if let Some(mut submodules_by_path) = submodules {
@@ -96,7 +107,7 @@ impl Handler {
                 else {
                     return Ok(());
                 };
-                self.analyze_blob(&analyzer, path, repo, state, entry, is_submodule)
+                self.analyze_blob(analyzer, path, repo, state, entry, is_submodule)
             },
             || Some(std::time::Duration::from_micros(5)),
             std::convert::identity,
